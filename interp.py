@@ -4,9 +4,11 @@ from typing import List, Tuple
 from models import Transformer
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
-from utils import layer_norm, generate_each, generate_uniform_sphere
+from matplotlib.cm import ScalarMappable
+from utils import layer_norm, generate_each, generate_uniform_sphere, generate_uniform_simplex
 import plotly.graph_objects as go #type: ignore
 import plotly.express as px #type: ignore
+import ternary #type: ignore
 
 
 def colored(ind: int) -> Tuple[str, str]:
@@ -498,3 +500,125 @@ def mapping_torus(model: Transformer, normed_shape: bool=False,
     )
     fig.show()
     
+
+def back_track(model: Transformer, examples: t.Tensor, seq_target: int = 2) -> List[List[List[np.ndarray]]]:
+    """
+    Computes the contribution of each head to each logit.
+    The contribution of the layer l, parallel module p in the direction id is:
+        contribution_list[id][l][p]
+    and for the residual stream's contribution, it is:
+        contribution_list[id][-1][0]
+    """
+
+    with t.no_grad():
+        _, computation = model.forward(examples, out_computation=True)
+
+        N = model.meta_params['N']
+        nb_layers = model.meta_params['nb_layers']
+        paras = model.meta_params['para']
+
+        contribution_list = []
+        for id in range(N):
+            direction = model.unemb.weight[id]
+
+            id_list = []
+            for layer in range(nb_layers):
+                layer_list = []
+                for para in range(paras):
+                    layer_list.append(np.array(t.einsum('d, ...d -> ...', direction, computation[f'para_{para}_layer_{layer}'][:, seq_target-1]).detach()))
+                id_list.append(layer_list)
+
+                id_list.append([np.array(t.einsum('d, ...d -> ...', direction, computation[f'res_{layer}'][:, seq_target-1]).detach())])
+                id_list.append([np.array(t.einsum('d, ...d -> ...', direction, computation[f'res_after_attn_layer_{layer}'][:, seq_target-1]).detach())])
+            contribution_list.append(id_list)
+
+    return contribution_list #Shape: [N, nb_layers, nb_para, batch_size]
+
+
+def plot_accuracy_simplex(
+        model: Transformer,
+        seq_target: int = 2,
+        comp_method: str = 'combined',
+        input=None, 
+        output=None, 
+        nb_points: int=5000,
+    ) -> None:
+    """
+    Plots the accuracy of a positive combination of heads on a simplex (when they are 3).
+    """
+    assert model.meta_params['nb_layers'] == 1
+    assert comp_method in ['combined', 'input', 'output']
+    if comp_method == 'input':
+        assert input is not None
+    elif comp_method == 'output':
+        assert output is not None
+
+    N = model.meta_params['N']
+    layer = 0
+
+    examples = generate_each(model.pi)
+    contribution = back_track(model, examples)
+    contrib = t.tensor(np.array([contrib[:-2] for contrib in contribution]))
+
+
+    # Computes the contribution according to the good method.
+    if comp_method == 'input':
+        select = examples[input, seq_target].to(t.int)
+    elif comp_method == 'output':
+        select = (examples[:, seq_target] == output)
+    elif  comp_method == 'combined':
+        select = t.arange(len(examples))
+
+    next_tokens = examples[:, seq_target].to(t.int)
+    nb_tokens = len(next_tokens)
+    contrib_l_para = contrib[:, layer, :, :]
+    contrib_max = contrib_l_para[next_tokens, :, t.arange(nb_tokens)].mH.unsqueeze(0)
+    contrib = contrib_l_para-contrib_max # This operation means we cancel the residual stream ! 
+
+    # Sample data points (p, q, r) on the simplex
+    simplex_coordinate = generate_uniform_simplex(nb_points=nb_points, add_special=True)
+    simplex_value = []
+    for p, q, r in simplex_coordinate:
+        mixture = contrib[:, 0]*p + contrib[:, 1]*q + contrib[:, 2]*r
+
+        acc = (t.Tensor([t.max(mixture[t.arange(N) != next_tokens[j], j], dim=0)[0].item() for j in t.arange(nb_tokens)]) <= 0).to(t.float)[select].mean().item()
+        simplex_value.append(acc)
+
+    # Initialize Colormaps and compute each points' color.
+    c = 'Oranges'
+    c_label = 'Accuracy'
+    norm = Normalize(vmin=min(simplex_value), vmax=max(simplex_value))
+    cmap = plt.get_cmap(c)
+    colors = cmap(norm(simplex_value))
+
+    # Initialize a ternary plot
+    _, ax = plt.subplots(figsize=(10, 10))
+    tax = ternary.TernaryAxesSubplot(ax=ax, scale=1.)
+    if comp_method == 'input':
+        tax.set_title(f"Ternary Token {input}", fontsize=20)
+    elif comp_method == 'output':
+        tax.set_title(f"Ternary Output Token {output}", fontsize=20)
+    elif comp_method == 'combined':
+        tax.set_title("Ternary Combine Token", fontsize=20)
+
+    # Set corner labels
+    tax.right_corner_label("Head 0", fontsize=15)
+    tax.top_corner_label("Head 1", fontsize=15)
+    tax.left_corner_label("Head 2", fontsize=15)
+
+    # Plot data points with colors
+    for (point, color) in zip(simplex_coordinate, colors):
+        tax.scatter([point], marker='o', color=color)
+
+    # Add colorbar
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label(c_label, fontsize=15)
+        
+    # Set ticks and gridlines
+    tax.gridlines(color="black", multiple=0.1)
+    tax.ticks(axis='lbr', linewidth=1, multiple=0.1, tick_formats="")
+    tax.clear_matplotlib_ticks()
+
+    plt.show()

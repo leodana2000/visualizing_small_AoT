@@ -1,7 +1,7 @@
 import torch as t
 import numpy as np
 from typing import Dict, List, Tuple
-from utils import layer_norm, compute_div
+from utils import layer_norm
 
 device = 'cpu' #mps is way slower!
 

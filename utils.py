@@ -23,22 +23,23 @@ def generate_data(batch_size: int, num_batch: int, pi: List[t.Tensor], context_w
     assert context_window >= n_gram
 
     token_list: List[t.Tensor] = []
-    for i in range(n_gram):
-        if i == 0:
+    for i in range(n_gram): # For each sequence position, we sample tokens based on their conditional probability
+        if i == 0: 
             token = t.multinomial(pi[0], batch_size*num_batch, replacement=True).squeeze()
             token_list.append(token)
         elif i < n_gram-1:
             token = t.multinomial(pi[i][*token_list, :], 1).squeeze()
             token_list.append(token)
-        elif i == n_gram-1:
+        elif i == n_gram-1: # For the last tokens, we use only the last n_gram to generate them
             for _ in range(context_window-n_gram+1):
                 token = t.multinomial(pi[n_gram-1][*token_list[-n_gram+1:], :], 1).squeeze()
                 token_list.append(token)
     
     token_list = [token.unsqueeze(-1) for token in token_list]
     tokens = t.cat(token_list, dim=-1)
-    dataset = TensorDataset(tokens)
 
+    # Stores the dataset in a dataloader for easy batching and shuffling
+    dataset = TensorDataset(tokens)
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -53,32 +54,36 @@ def generate_each(pi: List[t.Tensor], eps: float = 1e-10) -> t.Tensor:
     N = pi[0].shape[0]
 
     tokens = []
-    for i in range(N**n_gram):
+    for i in range(N**n_gram): # Enumerates all possible token combinations
         is_non_zero = True
         indices = [(i//(N**j))%N for j in range(n_gram)]
         cumulative_proba = 1.
         ind = 0
         while (ind < n_gram) and is_non_zero:
-            cumulative_proba *= pi[ind][*indices[:ind+1]].item()
+            cumulative_proba *= pi[ind][*indices[:ind+1]].item() # Computes the cumulative probability
             ind += 1
-            is_non_zero = is_non_zero and (cumulative_proba > eps)
+            is_non_zero = is_non_zero and (cumulative_proba > eps) # Keep only sequences with probability greater than eps
         if is_non_zero:
-            tokens.append(indices)
+            tokens.append(indices) # Store the token sequence
+
     return t.tensor(tokens, dtype=t.long)
 
 
-def generate_uniform_simplex(nb_points, add_special=True) -> List[Tuple[Any, Any, Any]]:
+def generate_uniform_simplex(nb_points, add_special=True) -> List[Tuple[float, float, float]]:
     """
     Generates nb_points uniformly on the 2-simplex. 
     Add extra points at the tip and center of the simplex if 'add_special=True.'
     """
 
     U, V = list(np.random.rand(nb_points)), list(np.random.rand(nb_points))
-    if add_special:
+
+    # Adds the the list the point in the center of the traingle, and the points at the tips.
+    if add_special: 
         U += [0, 1, 1, 4/9]
         V += [0, 0, 1, 1/2]
 
     data=[]
+    # Apply the Transformtion below to go from the uniform law on [0,1]^2 to the uniform law on the simplex.
     for u, v in zip(U, V):
         sqrt_u = np.sqrt(u)
         p, q, r = 1-sqrt_u, sqrt_u*(1-v), sqrt_u*v
@@ -88,7 +93,7 @@ def generate_uniform_simplex(nb_points, add_special=True) -> List[Tuple[Any, Any
 
 
 def generate_uniform_sphere(nb_points) -> List[Tuple[Any, Any, Any]]:
-    """Generates nb_points uniformly on the sphere."""
+    """Generates nb_points uniformly on the sphere using gaussian distribution."""
     data_tensor = t.randn((3, nb_points))
     data_tensor = data_tensor/t.norm(data_tensor, dim=0, keepdim=True)
     data = np.array(data_tensor).tolist()
