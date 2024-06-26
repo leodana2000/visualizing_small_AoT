@@ -4,7 +4,6 @@ from typing import Dict, List, Tuple
 from utils import layer_norm, compute_div
 
 device = 'cpu' #mps is way slower!
-cosim = t.nn.CosineSimilarity(dim=-1)
 
 
 class Transformer(t.nn.Module):
@@ -205,61 +204,3 @@ class Transformer(t.nn.Module):
 class AoT(Transformer):
     def __init__(self, d: int, N: int, nb_layers: int, parallel_heads: int, nb_head: int, context_window: int, pi: List[t.Tensor], argmax_mode: bool = False) -> None:
         super().__init__(d, N, nb_layers, 0, 0, parallel_heads, nb_head, context_window, pi, argmax_mode)
-
-
-class Low_rank(t.nn.Module):
-    def __init__(self, d: int, N: int, context_window: int, pi: List[t.Tensor]) -> None:
-        super().__init__()
-        n_gram = len(pi)
-        self.word_emb = t.nn.Linear(d, N**(n_gram-1), bias=False)
-        self.unemb = t.nn.Linear(d, N, bias=False)
-
-        self.meta_params: Dict[str, int] = {
-            'd': d,
-            'N': N,
-            'width': 0,
-            'depth': 0,
-            'nb_head': 0,
-            'context_window': context_window,
-            'nb_layers': 0,
-            'para': 0,
-            'n_gram': n_gram,
-        }
-        self.pi: List[t.Tensor] = pi
-
-
-    def low_init(self, scale: float=1) -> None:
-        self.word_emb.weight = t.nn.Parameter(t.randn_like(self.word_emb.weight)*scale/(np.sqrt(self.word_emb.weight.shape[0]*self.word_emb.weight.shape[1])))
-        self.unemb.weight = t.nn.Parameter(t.randn_like(self.unemb.weight)*scale/(np.sqrt(self.unemb.weight.shape[0]*self.unemb.weight.shape[1])))
-
-
-    def compute_div(self):
-        """
-        Compute the closed-form divergence.
-        """
-        W_E = self.word_emb.weight.detach()
-        W_U = self.unemb.weight.detach()
-        pi = self.pi
-        return compute_div(W_E, W_U, pi)
-
-
-    def freeze(self, freezer) -> None:
-        """
-        Freezes the training of the embedding and/or unembedding.
-        """
-        freeze_E = not(freezer['freeze_E'])
-        freeze_U = not(freezer['freeze_U'])
-
-        self.word_emb.requires_grad_(freeze_E)
-        self.unemb.requires_grad_(freeze_U)
-
-
-    def forward(self, x: t.Tensor) -> Tuple[t.Tensor, Dict[str, t.Tensor]]: #works for trigram only
-        x = x[:, :-1] + x[:, 1:]*self.meta_params['N']
-
-        #concatenates anything in first position since we don't care about i-th prediction for i < n-gram - 1
-        x = t.cat([t.zeros(x.shape[0], 1).to(t.int).to(device), x], dim=1) 
-
-        logits = self.unemb(self.word_emb.weight[x])
-        logits = logits - logits.mean()
-        return logits, {}

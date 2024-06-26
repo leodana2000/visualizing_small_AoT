@@ -3,13 +3,13 @@ from tqdm import tqdm
 from typing import Dict, List, Union
 from torch.utils.data import DataLoader
 from utils import entropy
-from models import Transformer, Low_rank
+from models import Transformer
 
 
 device = 'cpu' #mps is way slower on Mac.
 
 
-def compute_loss(model: Union[Transformer, Low_rank], batch: t.Tensor, ent: t.Tensor, loss_fn, next_token: bool) -> t.Tensor:
+def compute_loss(model: Transformer, batch: t.Tensor, ent: t.Tensor, loss_fn, next_token: bool) -> t.Tensor:
     """
     Computes the loss of the model on a batch, and adds the entropy for normalization.
     If next_token=True, the predictions are compared with the next token.
