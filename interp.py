@@ -595,11 +595,11 @@ def plot_accuracy_simplex(
     _, ax = plt.subplots(figsize=(10, 10))
     tax = ternary.TernaryAxesSubplot(ax=ax, scale=1.)
     if comp_method == 'input':
-        tax.set_title(f"Ternary Token {input}", fontsize=20)
+        tax.set_title(f"Prediction of input {input} on a Simplex", fontsize=20)
     elif comp_method == 'output':
-        tax.set_title(f"Ternary Output Token {output}", fontsize=20)
+        tax.set_title(f"Accuracy for output {output} on a Simplex", fontsize=20)
     elif comp_method == 'combined':
-        tax.set_title("Ternary Combine Token", fontsize=20)
+        tax.set_title("Accuracy of the AoT on a Simplex", fontsize=20)
 
     # Set corner labels
     tax.right_corner_label("Head 0", fontsize=15)

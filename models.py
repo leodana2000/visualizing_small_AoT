@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, List, Tuple
 from utils import layer_norm
 
-device = 'cpu' #mps is way slower!
+device = 'cpu'
 
 
 class Transformer(t.nn.Module):

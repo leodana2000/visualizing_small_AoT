@@ -57,7 +57,7 @@ def train(model: Transformer, dataloader: DataLoader, lr: float=1e-3, next_token
     Loss = []
     Acc = []
     for batch in tqdm(dataloader):
-        logits = model(batch[0])
+        logits = model(batch[0])[0]
         loss = compute_loss(model, batch[0], logits, ent, loss_fn, next_token)
         acc = compute_acc(batch[0], logits)
         loss.backward()
@@ -83,7 +83,7 @@ def train_boosting(model: Transformer, dataloaders: List[DataLoader], lr: float=
         'freeze_E': False,
         'freeze_pos': False,
         'freeze_U': False,
-        'freeze_Attn': [[{'freeze_O': True, 'freeze_QKV': True} for _ in range(para)]]
+        'freeze_Attn': [[{'freeze_O': True, 'freeze_Q': True, 'freeze_K': True, 'freeze_V': True} for _ in range(para)]]
     }
     model.freeze(freezer)
 
