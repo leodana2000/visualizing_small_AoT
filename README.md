@@ -1,8 +1,6 @@
-# Visualizing small Attention-only Transformers
-
 *Work done during an internship at MILES, Paris Dauphine University, under the supervision of Yann Chevaleyre and Muni Sreenivas Pydi.*
 
-This is a codebase to replicate the results of the blog-post: [blog-post]. It allows us to visualize small attention-only Transformers with embedding dimension 3. 
+This is a codebase to replicate the results of the [blog-post](https://www.lesswrong.com/collaborateOnPost?postId=mu2iJxZWszkKSGgxf&key=ebde77264286ccaadec55ba649f7df). It allows us to visualize small attention-only Transformers with embedding dimension 3. 
 * models.py contains the architecture of the Attention only Transformer,
 * train.py is used to train the Transformer normally or using head-boosting (training heads individually),
 * interp.py contains the main functions to visualize the Transformer,
